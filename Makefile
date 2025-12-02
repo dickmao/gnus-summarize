@@ -16,7 +16,7 @@ install-py: .venv $(wildcard *.py)
 
 .PHONY: compile
 compile:
-	$(EMACS) -batch -l gnus \
+	$(EMACS) -batch -l debbugs \
 	  --eval "(setq byte-compile-error-on-warn t)" \
 	  --eval "(setq package-user-dir (expand-file-name \"deps\"))" \
 	  -f package-initialize \

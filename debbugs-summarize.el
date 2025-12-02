@@ -22,7 +22,7 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
-(require 'gnus-sum)
+(require 'debbugs)
 (require 'auth-source)
 
 (define-key gnus-summary-mode-map (kbd "z") #'debsum-summarize-thread)
@@ -31,9 +31,6 @@
   "Summarize shit."
   :group 'tools
   :prefix "debbugs-summarize-")
-
-(defvar-local debsum-initial-prompt nil
-  "Initial prompt that started this conversation.")
 
 (defun debsum--get-api-key ()
   "Get Gemini API key from auth-source."
@@ -110,27 +107,29 @@ Returns a list of plists with :header and :content."
 (defun debsum--get-summary-async (prompt)
   "Get summary via Python script, display in article buffer."
   (let* ((api-key (debsum--get-api-key))
+	 (name "debbugs-summary")
+	 (bname (format "*%s*" name))
          (proc (make-process
-                :name "debsum-summary"
-                :buffer "*debsum-summary*"
-                :command (list "python3"
-                               (expand-file-name "~/.local/bin/debsum-summarize.py"))
+                :name name
+                :buffer bname
+                :command (split-string "uv run python summarize.py")
                 :sentinel (lambda (proc event)
-                            (when (string= event "finished\n")
-                              (let ((summary (with-current-buffer "*debsum-summary*"
-                                               (buffer-string))))
-                                (debsum--display-summary summary prompt)))))))
+			    (when (equal (string-trim event) "finished")
+			      (debsum--display-summary
+			       (with-current-buffer bname (buffer-string))
+			       prompt))
+			    (unless (process-live-p proc)
+			      (let (kill-buffer-query-functions)
+				(kill-buffer bname)))))))
     (setenv "GEMINI_API_KEY" api-key)
     (process-send-string proc prompt)
     (process-send-eof proc)))
 
 (defun debsum--display-summary (summary initial-prompt)
   "Display SUMMARY in article buffer, store INITIAL-PROMPT."
-  (require 'gnus-art)
   (gnus-with-article-buffer
     (let ((inhibit-read-only t))
       (erase-buffer)
-      (insert "=== AI Thread Summary ===\n\n")
       (insert summary)
       (insert "\n\n---\nPress C-' to ask follow-up questions.\n")
       (debsum--make-citations-clickable)
@@ -142,31 +141,22 @@ Returns a list of plists with :header and :content."
 (defun debsum-open-chat ()
   "Open comint buffer for LLM chat."
   (interactive)
-  (unless debsum-initial-prompt
-    (error "No active LLM conversation"))
-  (let* ((api-key (debsum--get-api-key))
-         (buf-name "*debsum-chat*")
-         (buf (get-buffer buf-name)))
-    (setenv "GEMINI_API_KEY" api-key)
-    (unless (and buf (get-buffer-process buf))
-      (setq buf (make-comint
-                 "debsum-chat"
-                 "python3"
-                 nil
-                 (expand-file-name "~/.local/bin/debsum-chat.py")))
-      (with-current-buffer buf
-        (debsum-chat-mode)
-        (goto-char (point-max))
-        (insert debsum-initial-prompt)
-        (comint-send-input)))
-    (pop-to-buffer buf
-                   '((display-buffer-at-bottom)
-                     (window-height . 0.3)))))
+  (setenv "GEMINI_API_KEY" (debsum--get-api-key))
+  ;; make-comint is idempotent
+  (let ((buf (apply #'make-comint "debsum-chat" "uv" nil
+		    (split-string "run python chat.py"))))
+    (with-current-buffer buf
+      (debsum-chat-mode)
+      (goto-char (point-max))
+      (insert debsum-initial-prompt)
+      (comint-send-input))
+    (pop-to-buffer buf '((display-buffer-at-bottom)
+			 (window-height . 0.3)))))
 
 (define-derived-mode debsum-chat-mode comint-mode "Debsum-Chat"
-  "Comint mode for Gnus LLM chat."
-  (setq comint-prompt-regexp "^Gemini> ")
-  (setq comint-use-prompt-regexp t))
+  "Comint mode for LLM chat."
+  (setq-local comint-prompt-regexp "^Gemini> ")
+  (setq-local comint-use-prompt-regexp t))
 
 (provide 'debsum)
 
