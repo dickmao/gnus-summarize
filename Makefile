@@ -8,14 +8,14 @@ PYSRC := $(shell git ls-files *.py)
 ELSRC := $(shell git ls-files debbugs-summarize*.el)
 TESTSRC := $(shell git ls-files test*.el)
 
-.venv:
-	uv venv
+uv.lock:
+	uv sync -q
 
 .PHONY: install-py
 install-py: .venv $(wildcard *.py)
 	uv pip install --quiet --force-reinstall --editable .
 
-deps/archives/gnu/archive-contents:
+deps/archives/gnu/archive-contents: debbugs-summarize.el
 	$(call install-recipe,$(CURDIR)/deps)
 	rm -rf deps/debbugs-summarize* # just keep deps
 
@@ -51,7 +51,7 @@ dist: dist-clean
 	( \
 	set -e; \
 	PKG_NAME=`$(EMACS) -batch -L . -l debbugs-summarize-package --eval "(princ (debbugs-summarize-package-name))"`; \
-	rsync -R $(ELSRC) $(PYSRC) pyproject.toml $${PKG_NAME} && \
+	rsync -R $(ELSRC) $(PYSRC) Makefile pyproject.toml summarize-prompt.txt $${PKG_NAME} && \
 	tar cf $${PKG_NAME}.tar $${PKG_NAME}; \
 	)
 
@@ -68,6 +68,7 @@ define install-recipe
 	  -f package-refresh-contents \
 	  --eval "(package-install-file \"$${PKG_NAME}.tar\")"; \
 	PKG_DIR=`$(EMACS) -batch -l package --eval "(setq package-user-dir (expand-file-name $${INSTALL_PATH}))" -f package-initialize --eval "(princ (package-desc-dir (car (alist-get 'debbugs-summarize package-alist))))"`; \
+	GIT_DIR=`git rev-parse --show-toplevel`/.git $(MAKE) -C $${PKG_DIR} uv.lock; \
 	)
 	$(MAKE) dist-clean
 endef

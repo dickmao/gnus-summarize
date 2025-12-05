@@ -1,0 +1,5 @@
+Please summarize this email thread.  Include key points, main
+participants, and outcomes.  When referencing what someone said, cite
+them by name.  A ">" marker precedes a citation of the message being
+responded to.  Such markers nest so that ">>" refers to a grandparent
+in the message tree.
