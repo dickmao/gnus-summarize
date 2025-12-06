@@ -273,27 +273,16 @@
   (let* ((default-directory (debsum--elpa-dir))
 	 (messages (or (alist-get bug-num debsum--messages-alist)
 		       (error "Missing messages for Bug#%d" bug-num)))
+	 (temp-file (make-temp-file "debsum-messages-"))
 	 ;; make-comint is idempotent
-	 (buf (apply #'make-comint "debsum-chat" "uv" nil
-		     (split-string "run python chat.py")))
-	 (proc (get-buffer-process buf)))
+	 (buf (progn
+		(let ((coding-system-for-write 'utf-8))
+		  (with-temp-file temp-file
+		    (insert messages)))
+		(apply #'make-comint (format "debsum-chat-bug#%d" bug-num) "uv" nil
+		       (split-string (format "run python chat.py %s" temp-file))))))
     (with-current-buffer buf
-      (debsum-chat-mode)
-      (while (not (save-excursion
-                    (goto-char (point-min))
-                    (re-search-forward comint-prompt-regexp nil t)))
-	(accept-process-output proc 0.1))
-      (goto-char (process-mark proc))
-      ;; insert-file-contents doesn't move point, ergo contortion.
-      (insert (with-temp-buffer
-		(insert-file-contents (expand-file-name "chat-prompt.txt"))
-		(insert "\r")
-		(insert messages)
-		(goto-char (point-min))
-		(while (search-forward "\n" nil t)
-		  (replace-match "\\\\r\\\\n" t t))
-		(buffer-string)))
-      )
+      (debsum-chat-mode))
     (when (> (length (window-list)) 1)
       (delete-other-windows))
     (pop-to-buffer buf '((display-buffer-at-bottom)

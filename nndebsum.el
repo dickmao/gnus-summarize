@@ -26,6 +26,7 @@
   nil)
 
 (defun nndebsum-request-article (_article &optional group _server _to-buffer)
+  (setq-local gnus-article-buffer (current-buffer))
   (cons (or group gnus-newsgroup-name) "foo"))
 
 (defun nndebsum-request-group (_group &optional _server _fast _info)

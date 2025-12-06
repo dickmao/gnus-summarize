@@ -1,3 +1,4 @@
-Please summarize this email thread.  A ">" marker precedes a citation
-of the message being responded to.  Such markers nest so that ">>"
-refers to a grandparent in the message tree.
+Please summarize this email thread. Avoid excessive use of asterisks.
+Regarding the thread's formatting, a ">" marker precedes a citation of
+the message being responded to.  Such markers nest so that ">>" refers
+to a grandparent in the message tree.
