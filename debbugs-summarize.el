@@ -68,48 +68,40 @@
          'help-echo (format "Jump to article %d" article-num))))))
 
 (defun debsum--strip-base64-attachments (string)
-  "Remove all base64-encoded MIME blocks from STRING.
-Uses no regex to avoid stack overflow on large inputs."
+  "Remove all base64-encoded MIME blocks from STRING."
   (with-temp-buffer
     (insert string)
     (goto-char (point-min))
     (while (not (eobp))
-      (let ((line-start (line-beginning-position))
-            (line-end (line-end-position)))
-        (let ((line (buffer-substring-no-properties line-start line-end)))
-          (when (string-match "^\\([^- ][^ ]*\\): +base64$" line)
-            (let ((base64-line-end line-end)
-                  opening-start opening-id
-                  closing-start closing-end)
+      (let ((line (buffer-substring-no-properties (line-beginning-position)
+						  (line-end-position))))
+        (if (string-match "^\\([^- ][^ ]*\\): +base64$" line)
+            (let ((base64-pos (point))
+                  opening-start opening-id closing-end)
               (save-excursion
-                (goto-char line-start)
-                (forward-line -1)
                 (while (and (not opening-id) (not (bobp)))
-                  (let ((check-line (buffer-substring-no-properties
-                                     (line-beginning-position)
-                                     (line-end-position))))
-                    (when (string-match "^-+\\(.+?\\)-*$" check-line)
+                  (forward-line -1)
+                  (let ((l (buffer-substring-no-properties (line-beginning-position)
+							   (line-end-position))))
+                    (when (string-match "^-+\\(.+?\\)-*$" l)
                       (setq opening-start (line-beginning-position)
-                            opening-id (match-string 1 check-line))))
-                  (forward-line -1)))
-              (when opening-id
-                (save-excursion
-                  (goto-char base64-line-end)
-                  (forward-line 1)
-                  (while (and (not closing-start) (not (eobp)))
-                    (let ((check-line (buffer-substring-no-properties
-                                       (line-beginning-position)
-                                       (line-end-position))))
-                      (when (and (string-match "^-+\\(.+?\\)-*$" check-line)
-                                 (string= (match-string 1 check-line) opening-id))
-                        (setq closing-start (line-beginning-position)
-                              closing-end (line-end-position))))
-                    (forward-line 1)))
-                (when (and closing-start (> closing-start base64-line-end))
-                  (delete-region opening-start (1+ closing-end))
-                  (goto-char opening-start)
-                  (setq line-end (line-beginning-position))))))))
-      (forward-line 1))
+                            opening-id (match-string 1 l))))))
+              (if (and opening-id
+                       (save-excursion
+                         (goto-char base64-pos)
+                         (while (and (not closing-end) (not (eobp)))
+                           (forward-line 1)
+                           (let ((l (buffer-substring-no-properties
+				     (line-beginning-position) (line-end-position))))
+                             (when (and (string-match "^-+\\(.+?\\)-*$" l)
+                                        (string= (match-string 1 l) opening-id))
+                               (setq closing-end (line-end-position)))))
+                         (and closing-end (> closing-end base64-pos))))
+                  (progn
+                    (delete-region opening-start (min (1+ closing-end) (point-max)))
+                    (goto-char opening-start))
+                (forward-line 1)))
+          (forward-line 1))))
     (buffer-string)))
 
 (defun debsum--strip-emacsbug-template (body)
@@ -189,6 +181,7 @@ Uses no regex to avoid stack overflow on large inputs."
         (when references
           (push (format "References: %s" references) lines))
 	(push "" lines)
+
         (push (debsum--strip-base64-attachments
                (debsum--strip-emacsbug-template body)) lines)
         (push "" lines)))
