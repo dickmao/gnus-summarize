@@ -282,7 +282,9 @@
 	      (goto-char (point-min))
 	      (debsum--chat-keyable bug-num))))
       (message "Bummer")
-      (prog1 nil (pop-to-buffer bname)))))
+      (prog1 nil (pop-to-buffer (with-current-buffer bname
+				  (prog1 (current-buffer)
+				    (special-mode))))))))
 
 (defun debsum--display-article (bug-num buffer)
   "Display BUFFER using Gnus article display routines."
