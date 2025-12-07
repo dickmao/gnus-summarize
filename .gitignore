@@ -3,3 +3,4 @@
 !/.claude
 *.tar
 debbugs-summarize-[0-9.]*
+__pycache__/
