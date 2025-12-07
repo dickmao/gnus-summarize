@@ -15,7 +15,7 @@
 |                  | if we can follow it.                 |
 +------------------+--------------------------------------+
 
-|---| lists.gnu.org/archive/html/emacs-devel/2021-08/msg01246.html
+|---| https://lists.gnu.org/archive/html/emacs-devel/2021-08/msg01246.html
 
 Install
 =======
