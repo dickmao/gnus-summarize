@@ -5,8 +5,7 @@
 |                  | as I have, you realize more than     |
 |                  | ninety percent of the discussion     |
 |                  | that takes place before a working    |
-|                  | draft is irrelevant. So you          |
-|                  | physically take                      |
+|                  | draft is irrelevant.                 |
 +------------------+--------------------------------------+
 | 2021 maintainer  | Do you have a way to recover the 10% |
 |                  | that _is_ relevant without having    |
