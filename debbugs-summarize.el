@@ -34,6 +34,7 @@
 (require 'nndebsum)
 (require 'gnus-sum)
 (require 'gnus-art)
+(require 'comint)
 (require 'auth-source)
 (require 'soap-client)
 
