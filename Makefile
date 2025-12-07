@@ -76,3 +76,9 @@ endef
 .PHONY: install
 install:
 	$(call install-recipe,$(INSTALLDIR))
+
+README.rst: README.in.rst debbugs-summarize.el
+	grep ';;' debbugs-summarize.el \
+	  | awk '/;;;\s*Commentary/{within=1;next}/;;;\s*/{within=0}within' \
+	  | sed -e 's/^\s*;;\s\?/   /g' \
+	  | bash readme-sed.sh "COMMENTARY" README.in.rst > README.rst
