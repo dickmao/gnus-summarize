@@ -25,9 +25,6 @@
 ;;; Commentary:
 
 ;; M-x debbugs-summarize-bug
-;;
-;; Or from gnus summary buffer of gmane.emacs.bugs,
-;; M-x debbugs-summarize-from-summary
 ;;;
 
 (require 'debbugs)
@@ -38,17 +35,13 @@
 (require 'auth-source)
 (require 'soap-client)
 
-(define-key gnus-summary-mode-map (kbd "z") #'debsum-bug-from-summary)
-;; gnus-article-read-summary-keys clobbers article, ergo explicit mapping
-(define-key gnus-article-mode-map (kbd "z") #'debsum-bug-from-summary)
-
 (defgroup debbugs-summarize nil
   "Summarize shit."
   :group 'tools
   :prefix "debbugs-summarize-")
 
-(defvar debsum--buffer-alist nil "Alist (BUGNUM . BUFFER)")
-(defvar debsum--messages-alist nil "Alist (BUGNUM . CORPUS)")
+(defvar debsum--buffer-alist nil "Alist (BUG-NUM-OR-MESSAGE-ID . BUFFER)")
+(defvar debsum--full-text-alist nil "Alist (BUG-NUM-OR-MESSAGE-ID . CORPUS)")
 
 (defun debsum--get-api-key ()
   "Get Gemini API key from auth-source."
@@ -123,14 +116,14 @@
         (substring body 0 match-pos)
       body)))
 
-(defun debsum--bug-header (bug-num status messages)
+(defun debsum--bug-header (bug-num status log)
   (let* ((subject (alist-get 'subject status))
          (severity (alist-get 'severity status))
          (pending-status (alist-get 'pending status))
          (package (car (alist-get 'package status)))
          (date (alist-get 'date status))
          (log-modified (alist-get 'log_modified status))
-         (total-count (length messages)))
+         (total-count (length log)))
     (mapconcat
      #'identity
      (delq nil (list (format "Bug #%d: %s" bug-num subject)
@@ -148,9 +141,25 @@
 		     ""))
      "\n")))
 
-(defun debsum--bug-messages (messages)
+(defun debsum--thread-full-text (message-id)
+  (mapconcat
+   #'identity
+   (when-let ((thread (gnus-id-to-thread (gnus-root-id message-id)))
+              (article-nums (gnus-articles-in-thread thread)))
+     (let (bodies)
+       (dolist (num article-nums)
+         (save-window-excursion
+           (gnus-summary-display-article num)
+           (with-current-buffer gnus-article-buffer
+             (push (debsum--strip-base64-attachments
+		    (buffer-substring-no-properties (point-min) (point-max)))
+                   bodies))))
+       (nreverse bodies)))
+   "\n"))
+
+(defun debsum--bug-full-text (log)
   (let (lines)
-    (dolist (msg messages)
+    (dolist (msg log)
       (let* ((msg-num (alist-get 'msg_num msg))
              (header (alist-get 'header msg))
              (body (alist-get 'body msg))
@@ -196,28 +205,81 @@
         (push "" lines)))
     (mapconcat #'identity (nreverse lines) "\n")))
 
-;;;###autoload
-(defun debsum-bug-from-summary ()
-  "Summarize Bug#XXXX and display in article buffer."
-  (interactive)
-  (if-let ((subject (gnus-summary-article-subject))
-	   (bug-p (string-match "bug#\\([0-9]+\\)" subject)))
-      (debsum-bug (string-to-number (match-string 1 subject)))
-    (user-error "Nothing happens here")))
-
-;;;###autoload
-(defun debsum-bug (bug-num)
-  "Summarize Bug#XXXX and display in article buffer."
-  (interactive (list (read-number "Enter bug number: ")))
+(defun debsum--init ()
   (cl-assert (setenv "GEMINI_API_KEY" (debsum--get-api-key)))
+  ;; clean zombies
   (setq debsum--buffer-alist
 	(cl-remove-if-not (lambda (pair)
 			    (and (bufferp (cdr pair))
 				 (buffer-live-p (cdr pair))))
-			  debsum--buffer-alist))
-  (when-let ((pair (or (assq bug-num debsum--buffer-alist)
-		       (debsum--reget-summary bug-num))))
-    (debsum--display-article (car pair) (cdr pair))))
+			  debsum--buffer-alist)))
+
+(defun debsum--add-buf (key buf header)
+  (setq debsum--buffer-alist (assoc-delete-all key debsum--buffer-alist))
+  (push (cons key buf) debsum--buffer-alist)
+  (with-current-buffer buf
+    (special-mode)
+    (let ((inhibit-read-only t))
+      (fill-region (point-min) (point-max))
+      (goto-char (point-min))
+      (insert header)
+      (insert "\n")
+      (debsum--make-citations-clickable)
+      (goto-char (point-max))
+      (insert "\n\n---\nPress C-c ' to ask follow-up questions.\n")
+      (goto-char (point-min))
+      (debsum--chat-keyable key))))
+
+(defun debsum-bug (bug-num)
+  (interactive (list (read-number "Enter bug number: ")))
+  (when-let ((buf (debsum--bug bug-num)))
+    (debsum--display-article bug-num buf)))
+
+(defun debsum-thread ()
+  (interactive)
+  (if-let ((subj (gnus-summary-article-subject))
+	   (bug-p (string-match "bug#\\([0-9]+\\)" subj))
+	   (bug-num (string-to-number (match-string 1 subj)))
+	   (buf (debsum--bug bug-num)))
+      (debsum--display-article bug-num buf)
+    (if-let ((header (gnus-summary-article-header))
+	     (message-id (mail-header-id header))
+	     (buf (debsum--thread message-id)))
+	(debsum--display-article message-id buf)
+      (message "Nothing happens here"))))
+
+(defun debsum--bug (bug-num)
+  (debsum--init)
+  (when-let ((reget-p (not (assoc-default bug-num debsum--buffer-alist)))
+	     (name (format "debbugs-summarize-Bug#%d" bug-num))
+	     (bname (format "*%s*" name))
+	     (status (car (debbugs-get-status bug-num)))
+	     (log (cl-letf (((symbol-function 'soap-validate-xs-basic-type)
+			     #'ignore))
+		    (debbugs-get-bug-log bug-num)))
+	     (header (debsum--bug-header bug-num status log))
+	     (full-text (or (assoc-default bug-num debsum--full-text-alist)
+			    (let ((ret (debsum--bug-full-text log)))
+			      (prog1 ret
+				(push (cons bug-num ret)
+				      debsum--full-text-alist)))))
+	     (buf (debsum--reget-summary name bname full-text)))
+    (debsum--add-buf bug-num buf header))
+  (assoc-default bug-num debsum--buffer-alist))
+
+(defun debsum--thread (message-id)
+  (debsum--init)
+  (when-let ((reget-p (not (assoc-default message-id debsum--buffer-alist)))
+	     (name (format "debbugs-summarize-%s" message-id))
+	     (bname (format "*%s*" name))
+	     (full-text (or (assoc-default message-id debsum--full-text-alist)
+			   (let ((ret (debsum--thread-full-text message-id)))
+			     (prog1 ret
+			       (push (cons message-id ret)
+				     debsum--full-text-alist)))))
+	     (buf (debsum--reget-summary name bname full-text)))
+    (debsum--add-buf message-id buf nil))
+  (assoc-default message-id debsum--buffer-alist))
 
 (defun debsum--elpa-dir ()
   (let ((elpa-dir (directory-file-name
@@ -228,7 +290,7 @@
         (directory-file-name (file-name-directory elpa-dir))
       elpa-dir)))
 
-(defsubst debsum--chat-keyable (bug-num)
+(defun debsum--chat-keyable (bug-num)
   (let ((map (copy-keymap (current-local-map))))
     (define-key map (kbd "C-c '")
 		(lambda ()
@@ -236,67 +298,36 @@
 		  (debsum-open-chat bug-num)))
     (use-local-map map)))
 
-(defun debsum--reget-summary (bug-num)
+(defun debsum--reget-summary (name bname full-text)
   "Return process buffer."
-  (setq debsum--buffer-alist (assq-delete-all bug-num debsum--buffer-alist))
-  (let* ((name (format "debbugs-summarize-Bug#%d" bug-num))
-	 (bname (format "*%s*" name))
-	 (status (car (debbugs-get-status bug-num)))
-	 (log (cl-letf (((symbol-function 'soap-validate-xs-basic-type)
-			 #'ignore))
-		(debbugs-get-bug-log bug-num)))
-	 (header (debsum--bug-header bug-num status log))
-	 (messages (or (alist-get bug-num debsum--messages-alist)
-		       (setf (alist-get bug-num debsum--messages-alist)
-			     (debsum--bug-messages log)))))
-    ;; (with-current-buffer "*scratch*"
-    ;; 	(goto-char (point-max))
-    ;; 	(insert header)
-    ;; 	(insert "\n")
-    ;; 	(insert messages))
-    (when (buffer-live-p (get-buffer bname))
-      (let (kill-buffer-query-functions)
-	(kill-buffer bname)))
-    (cl-loop
-     with success-p = nil
-     with default-directory = (debsum--elpa-dir)
-     with proc = (make-process
-		  :name name
-		  :buffer bname
-		  :command (split-string "uv run python summarize.py")
-		  :sentinel (lambda (_proc event)
-			      (unless success-p
-				(setq success-p (equal (string-trim event)
-						       "finished")))))
-     initially (progn (process-send-string proc messages)
-		      (process-send-eof proc))
-     repeat 225
-     do (accept-process-output proc 0.2)
-     until (not (process-live-p proc))
-     finally do (progn
-		  (when success-p
-		    (setf (alist-get bug-num debsum--buffer-alist)
-			  (process-buffer proc)))
-		  (when (process-live-p proc)
-		    (kill-process proc))))
-    (if-let ((ret (assq bug-num debsum--buffer-alist)))
-	(prog1 ret
-	  (with-current-buffer (cdr ret)
-	    (special-mode)
-	    (let ((inhibit-read-only t))
-	      (fill-region (point-min) (point-max))
-	      (goto-char (point-min))
-	      (insert header)
-	      (insert "\n")
-	      (debsum--make-citations-clickable)
-	      (goto-char (point-max))
-	      (insert "\n\n---\nPress C-c ' to ask follow-up questions.\n")
-	      (goto-char (point-min))
-	      (debsum--chat-keyable bug-num))))
-      (message "Bummer")
-      (prog1 nil (pop-to-buffer (with-current-buffer bname
-				  (prog1 (current-buffer)
-				    (special-mode))))))))
+  (when (buffer-live-p (get-buffer bname))
+    (let (kill-buffer-query-functions)
+      (kill-buffer bname)))
+  (cl-loop
+   with success-p = nil
+   with default-directory = (debsum--elpa-dir)
+   with proc = (make-process
+		:name name
+		:buffer bname
+		:command (split-string "uv run python summarize.py")
+		:sentinel (lambda (_proc event)
+			    (unless success-p
+			      (setq success-p (equal (string-trim event)
+						     "finished")))))
+   initially (progn (process-send-string proc full-text)
+		    (process-send-eof proc))
+   repeat 225
+   do (accept-process-output proc 0.2)
+   until (not (process-live-p proc))
+   finally return (prog1 (if success-p
+			     (process-buffer proc)
+			   (message "Bummer")
+			   (pop-to-buffer (with-current-buffer bname
+					    (prog1 (current-buffer)
+					      (special-mode))))
+			   nil)
+		    (when (process-live-p proc)
+		      (kill-process proc)))))
 
 (defun debsum--display-article (bug-num buffer)
   "Display BUFFER using Gnus article display routines."
@@ -317,14 +348,14 @@
 (defun debsum-open-chat (bug-num)
   "Open comint buffer for LLM chat."
   (let* ((default-directory (debsum--elpa-dir))
-	 (messages (or (alist-get bug-num debsum--messages-alist)
-		       (error "Missing messages for Bug#%d" bug-num)))
-	 (temp-file (make-temp-file "debsum-messages-"))
+	 (full-text (or (assoc-default bug-num debsum--full-text-alist)
+		       (error "Missing full-text for Bug#%d" bug-num)))
+	 (temp-file (make-temp-file "debsum-full-text-"))
 	 ;; make-comint is idempotent
 	 (buf (progn
 		(let ((coding-system-for-write 'utf-8))
 		  (with-temp-file temp-file
-		    (insert messages)))
+		    (insert full-text)))
 		(apply #'make-comint (format "debsum-chat-bug#%d" bug-num) "uv" nil
 		       (split-string (format "run python chat.py %s" temp-file))))))
     (with-current-buffer buf
@@ -338,6 +369,10 @@
   "Comint mode for LLM chat."
   (setq-local comint-prompt-regexp "^Gemini> ")
   (setq-local comint-use-prompt-regexp t))
+
+(define-key gnus-summary-mode-map (kbd "z") #'debsum-thread)
+;; gnus-article-read-summary-keys clobbers article, ergo explicit mapping
+(define-key gnus-article-mode-map (kbd "z") #'debsum-thread)
 
 (provide 'debsum)
 
