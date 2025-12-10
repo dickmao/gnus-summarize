@@ -50,25 +50,6 @@
        :user "gemini-api")
       (error "No Gemini API key in auth-source")))
 
-(defun gnus-summarize--make-citations-clickable ()
-  "Find article number references and make them clickable."
-  (save-excursion
-    (goto-char (point-min))
-    (while (re-search-forward "Message \\([0-9]+\\)" nil t)
-      (let ((article-num (string-to-number (match-string 1)))
-            (start (match-beginning 0))
-            (end (match-end 0)))
-        (make-text-button
-         start end
-         'action (lambda (_button)
-                   (let ((art article-num))
-                     (other-window 1)
-                     (gnus-summary-goto-subject art)
-                     (gnus-summary-select-article)))
-         'face 'link
-         'follow-link t
-         'help-echo (format "Jump to article %d" article-num))))))
-
 (defun gnus-summarize--strip-base64-attachments (string)
   "Remove all base64-encoded MIME blocks from STRING."
   (with-temp-buffer
@@ -116,14 +97,13 @@
         (substring body 0 match-pos)
       body)))
 
-(defun gnus-summarize--bug-header (bug-num status log)
+(defun gnus-summarize--bug-header (bug-num status)
   (let* ((subject (alist-get 'subject status))
          (severity (alist-get 'severity status))
          (pending-status (alist-get 'pending status))
          (package (car (alist-get 'package status)))
          (date (alist-get 'date status))
-         (log-modified (alist-get 'log_modified status))
-         (total-count (length log)))
+         (log-modified (alist-get 'log_modified status)))
     (mapconcat
      #'identity
      (delq nil (list (format "Bug #%d: %s" bug-num subject)
@@ -137,7 +117,6 @@
 		     (when log-modified
 		       (format "Last Modified: %s"
 			       (format-time-string "%Y-%m-%d" log-modified)))
-		     (format "Message Count: %d" total-count)
 		     ""))
      "\n")))
 
@@ -233,76 +212,54 @@
 				 (buffer-live-p (cdr pair))))
 			  gnus-summarize--buffer-alist)))
 
-(defun gnus-summarize--add-buf (key buf header)
-  (setq gnus-summarize--buffer-alist (assoc-delete-all key gnus-summarize--buffer-alist))
-  (push (cons key buf) gnus-summarize--buffer-alist)
-  (with-current-buffer buf
-    (special-mode)
-    (let ((inhibit-read-only t))
-      (fill-region (point-min) (point-max))
-      (goto-char (point-min))
-      (when header
-	(insert header))
-      (insert "\n")
-      (gnus-summarize--make-citations-clickable)
-      (goto-char (point-max))
-      (insert "\n\n---\nPress C-c ' to ask follow-up questions.\n")
-      (goto-char (point-min))
-      (gnus-summarize--chat-keyable key))))
-
 (defun gnus-summarize-bug (bug-num)
   (interactive (list (read-number "Enter bug number: ")))
-  (when-let ((buf (gnus-summarize--bug bug-num)))
-    (gnus-summarize--display-article bug-num buf)))
+  (gnus-summarize--bug bug-num)
+  (gnus-summarize--display-article
+   bug-num (gnus-summarize--bug-header
+	    bug-num (car (debbugs-get-status bug-num)))))
 
 ;;;###autoload
 (defun gnus-summarize-thread ()
+  "Main entry point."
   (interactive)
   (if-let ((subj (gnus-summary-article-subject))
 	   (bug-p (string-match "bug#\\([0-9]+\\)" subj))
-	   (bug-num (string-to-number (match-string 1 subj)))
-	   (buf (gnus-summarize--bug bug-num)))
-      (gnus-summarize--display-article bug-num buf)
+	   (bug-num (string-to-number (match-string 1 subj))))
+      (gnus-summarize-bug bug-num)
     (if-let ((header (gnus-summary-article-header))
 	     (message-id (mail-header-id header))
-	     (buf (gnus-summarize--thread message-id)))
-	(gnus-summarize--display-article message-id buf)
+	     (root-id (progn (gnus-summary-refer-thread)
+			     (gnus-root-id message-id))))
+	(progn
+	  (gnus-summarize--thread root-id)
+	  (gnus-summarize--display-article root-id nil))
       (message "Nothing happens here"))))
 
 (defun gnus-summarize--bug (bug-num)
   (gnus-summarize--init)
   (when-let ((reget-p (not (assoc-default bug-num gnus-summarize--buffer-alist)))
-	     (name (format "gnus-summarize-Bug#%d" bug-num))
-	     (bname (format "*%s*" name))
-	     (status (car (debbugs-get-status bug-num)))
 	     (log (cl-letf (((symbol-function 'soap-validate-xs-basic-type)
 			     #'ignore))
 		    (debbugs-get-bug-log bug-num)))
-	     (header (gnus-summarize--bug-header bug-num status log))
 	     (full-text (or (assoc-default bug-num gnus-summarize--full-text-alist)
 			    (let ((ret (gnus-summarize--bug-full-text log)))
 			      (prog1 ret
 				(push (cons bug-num ret)
-				      gnus-summarize--full-text-alist)))))
-	     (buf (gnus-summarize--reget-summary name bname full-text)))
-    (gnus-summarize--add-buf bug-num buf header))
+				      gnus-summarize--full-text-alist))))))
+    (gnus-summarize--reget-summary bug-num))
   (assoc-default bug-num gnus-summarize--buffer-alist))
 
-(defun gnus-summarize--thread (message-id)
+(defun gnus-summarize--thread (root-id)
   (gnus-summarize--init)
-  (gnus-summary-refer-thread)
-  (let ((root-id (gnus-root-id message-id)))
-    (when-let ((reget-p (not (assoc-default message-id gnus-summarize--buffer-alist)))
-	       (name (format "gnus-summarize-%s" root-id))
-	       (bname (format "*%s*" name))
-	       (full-text (or (assoc-default root-id gnus-summarize--full-text-alist)
-			      (let ((ret (gnus-summarize--thread-full-text root-id)))
-				(prog1 ret
-				  (push (cons root-id ret)
-					gnus-summarize--full-text-alist)))))
-	       (buf (gnus-summarize--reget-summary name bname full-text)))
-      (gnus-summarize--add-buf root-id buf nil))
-    (assoc-default root-id gnus-summarize--buffer-alist)))
+  (when-let ((reget-p (not (assoc-default root-id gnus-summarize--buffer-alist)))
+	     (full-text (or (assoc-default root-id gnus-summarize--full-text-alist)
+			    (let ((ret (gnus-summarize--thread-full-text root-id)))
+			      (prog1 ret
+				(push (cons root-id ret)
+				      gnus-summarize--full-text-alist))))))
+    (gnus-summarize--reget-summary root-id))
+  (assoc-default root-id gnus-summarize--buffer-alist))
 
 (defun gnus-summarize--elpa-dir ()
   (let ((elpa-dir (directory-file-name
@@ -321,53 +278,64 @@
 		  (gnus-summarize-open-chat bug-num)))
     (use-local-map map)))
 
-(defun gnus-summarize--reget-summary (name bname full-text)
-  "Return process buffer."
-  (when (buffer-live-p (get-buffer bname))
-    (let (kill-buffer-query-functions)
-      (kill-buffer bname)))
-  (cl-loop
-   with success-p = nil
-   with default-directory = (gnus-summarize--elpa-dir)
-   with proc = (make-process
-		:name name
-		:buffer bname
-		:command (split-string "uv run python summarize.py")
-		:sentinel (lambda (_proc event)
-			    (unless success-p
-			      (setq success-p (equal (string-trim event)
-						     "finished")))))
-   initially (progn (process-send-string proc full-text)
-		    (process-send-eof proc))
-   repeat 225
-   do (accept-process-output proc 0.2)
-   until (not (process-live-p proc))
-   finally return (prog1 (if success-p
-			     (process-buffer proc)
-			   (message "Bummer")
-			   (pop-to-buffer (with-current-buffer bname
-					    (prog1 (current-buffer)
-					      (special-mode))))
-			   nil)
-		    (when (process-live-p proc)
-		      (kill-process proc)))))
+(defun gnus-summarize--extract-summary (b)
+  (with-current-buffer b
+    (save-excursion
+      (goto-char (point-min))
+      (when (re-search-forward comint-prompt-regexp nil t)
+	(string-trim
+	 (buffer-substring-no-properties
+	  (point-min)
+	  (match-beginning 0)))))))
 
-(defun gnus-summarize--display-article (key buffer)
+(defun gnus-summarize--reget-summary (key)
+  "Return summary."
+  (when-let ((old (assoc-default key gnus-summarize--buffer-alist)))
+    (when (buffer-live-p old)
+      (let (kill-buffer-query-functions)
+	(kill-buffer old))))
+  (setq gnus-summarize--buffer-alist
+	(assoc-delete-all key gnus-summarize--buffer-alist))
+  (cl-loop
+   with buf = (save-excursion
+		(save-window-excursion
+		  (gnus-summarize-open-chat key)))
+   repeat 225
+   do (accept-process-output (get-buffer-process buf) 0.2)
+   while (and (process-live-p (get-buffer-process buf))
+	      (not (gnus-summarize--extract-summary buf)))
+   finally do (if (gnus-summarize--extract-summary buf)
+		  (push (cons key buf) gnus-summarize--buffer-alist)
+		(message "Bummer")
+		(when (process-live-p (get-buffer-process buf))
+		  (kill-process (get-buffer-process buf)))
+		(with-current-buffer buf
+		  (special-mode))
+		(pop-to-buffer buf))))
+
+(defun gnus-summarize--display-article (key header)
   "Display BUFFER using Gnus article display routines."
-  (if (and (not (derived-mode-p 'gnus-summary-mode))
-	   (not (derived-mode-p 'gnus-article-mode)))
-      (pop-to-buffer buffer)
-    (let ((gnus-override-method '(nnsummarize ""))
-	  (gnus-article-prepare-hook
-	   (list (lambda ()
-		   (with-current-buffer gnus-article-buffer
-		     (let ((inhibit-read-only t))
-		       (erase-buffer)
-		       (insert-buffer-substring buffer)
-		       (gnus-summarize--chat-keyable key)
-		       (goto-char (point-min))))))))
-      (gnus-article-prepare "foo" nil)
-      (setq gnus-current-article nil))))
+  (when-let (b (assoc-default key gnus-summarize--buffer-alist))
+    (if (and (not (derived-mode-p 'gnus-summary-mode))
+	     (not (derived-mode-p 'gnus-article-mode)))
+	(pop-to-buffer b)
+      (let ((gnus-override-method '(nnsummarize ""))
+	    (gnus-article-prepare-hook
+	     (list (lambda ()
+		     (with-current-buffer gnus-article-buffer
+		       (let ((inhibit-read-only t))
+			 (erase-buffer)
+			 (insert (gnus-summarize--extract-summary b))
+			 (fill-region (point-min) (point-max))
+			 (goto-char (point-min))
+			 (when header
+			   (insert header "\n"))
+			 (goto-char (point-max))
+			 (insert "\n\n---\nPress C-c ' to ask follow-up questions.\n")
+			 (goto-char (point-min))
+			 (gnus-summarize--chat-keyable key)))))))
+	(gnus-article-prepare "foo" nil)
+	(setq gnus-current-article nil)))))
 
 (defun gnus-summarize-open-chat (key)
   "Open comint buffer for LLM chat."
@@ -392,7 +360,8 @@
 (define-derived-mode gnus-summarize-chat-mode comint-mode "Gnus-Summarize-Chat"
   "Comint mode for LLM chat."
   (setq-local comint-prompt-regexp "^Gemini> ")
-  (setq-local comint-use-prompt-regexp t))
+  (setq-local comint-use-prompt-regexp t)
+  (setq-local gnus-summarize-chat-opened nil))
 
 ;;;###autoload
 (with-eval-after-load 'gnus-art

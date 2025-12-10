@@ -20,11 +20,14 @@ if len(sys.argv) > 1:
     messages_file = Path(sys.argv[1])
     corpus = messages_file.read_text(encoding='utf-8', errors='replace')
     try:
-        chat.send_message(prompt + "\n" + corpus)
+        response = chat.send_message(prompt + '\n' + corpus)
+        print(response.text, end='')
+        if not response.text.endswith('\n'):
+            print()
     except Exception as e:
         print(f"Error loading corpus: {e}", file=sys.stderr)
 
-print("Gemini> ", end='', flush=True)
+print("\nGemini> ", end='', flush=True)
 
 for line in sys.stdin:
     user_input = line.strip()

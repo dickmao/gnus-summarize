@@ -1,3 +1,5 @@
-I have questions regarding the following email thread.  Note a ">"
-marker precedes a citation of the message being responded to.  Such
-markers nest so that ">>" refers to a grandparent in the message tree.
+Please summarize the following email thread.  In your reply, avoid
+markdown syntax, and in particular avoid overuse of asterisks and
+bullet points.  Note a ">" marker precedes a citation of the message
+being responded to.  Such markers nest so that ">>" refers to a
+grandparent in the message tree.
