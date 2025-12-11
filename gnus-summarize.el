@@ -342,7 +342,9 @@
 			 (insert "\n\n---\nPress C-c ' to ask follow-up questions.\n")
 			 (goto-char (point-min))
 			 (gnus-summarize--chat-keyable key)))))))
-	(gnus-article-prepare "foo" nil)))))
+	(gnus-article-prepare "foo" nil)
+	;; so subsequent gnus-summary-select-article doesn't return 'old
+	(setq gnus-current-article nil)))))
 
 (defun gnus-summarize-open-chat (key)
   "Open comint buffer for LLM chat."
