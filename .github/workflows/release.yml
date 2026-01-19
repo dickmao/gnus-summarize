@@ -7,4 +7,4 @@ jobs:
   build:
     uses: commercial-emacs/dignified-elpa/.github/workflows/build.yml@v1
     with:
-      files: "gnus-summarize.el gnus-summarize-package.el nnsummarize.el"
+      files: "README.rst chat.py chat-prompt.txt uv.lock pyproject.toml Makefile gnus-summarize.el gnus-summarize-package.el nnsummarize.el"
