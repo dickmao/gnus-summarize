@@ -8,3 +8,17 @@ jobs:
     uses: commercial-emacs/dignified-elpa/.github/workflows/build.yml@v1
     with:
       files: "README.rst chat.py chat-prompt.txt uv.lock pyproject.toml Makefile gnus-summarize.el gnus-summarize-package.el nnsummarize.el"
+
+  extract-readme:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract README
+        run: |
+          curl -X POST https://commandlinesystems.com/api/extract-readme \
+            -H "Content-Type: application/json" \
+            -d '{
+              "repo": "${{ github.repository }}",
+              "run_id": "${{ github.run_id }}",
+              "artifact": "ubuntu-latest-29.4"
+            }'
