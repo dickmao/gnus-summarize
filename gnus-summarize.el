@@ -380,6 +380,7 @@
   (visual-line-mode)
   (setq-local comint-prompt-regexp "^Gemini> ")
   (setq-local comint-use-prompt-regexp t)
+  (setq-local comint-scroll-show-maximum-output nil) ;o.w. visual bumps point
   (let ((b (current-buffer)))
     (setq-local gnus-summarize--kill-timer
 		(run-with-timer
