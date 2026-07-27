@@ -346,9 +346,7 @@
 			 (when (local-variable-p 'gnus-summary-buffer)
 			   (with-current-buffer gnus-summary-buffer
 			     (gnus-summarize--chat-keyable key)))))))))
-	(gnus-article-prepare "foo" nil)
-	;; so subsequent gnus-summary-select-article doesn't return 'old
-	(setq gnus-current-article nil)))))
+	(gnus-article-prepare "foo" nil)))))
 
 (defun gnus-summarize-open-chat (key)
   "Open comint buffer for LLM chat."
