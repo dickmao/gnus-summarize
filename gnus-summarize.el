@@ -331,21 +331,22 @@
       (let ((gnus-override-method '(nnsummarize ""))
 	    (gnus-article-prepare-hook
 	     (list (lambda ()
-		     (with-current-buffer gnus-article-buffer
-		       (let ((inhibit-read-only t))
-			 (erase-buffer)
-			 (insert (gnus-summarize--extract-summary b))
-			 (fill-region (point-min) (point-max))
-			 (goto-char (point-min))
-			 (when header
-			   (insert header "\n"))
-			 (goto-char (point-max))
-			 (insert "\n\n---\nPress C-c ' to ask follow-up questions.\n")
-			 (goto-char (point-min))
-			 (gnus-summarize--chat-keyable key)
-			 (when (local-variable-p 'gnus-summary-buffer)
-			   (with-current-buffer gnus-summary-buffer
-			     (gnus-summarize--chat-keyable key)))))))))
+		     (when (buffer-live-p b)
+		       (with-current-buffer gnus-article-buffer
+			 (let ((inhibit-read-only t))
+			   (erase-buffer)
+			   (insert (gnus-summarize--extract-summary b))
+			   (fill-region (point-min) (point-max))
+			   (goto-char (point-min))
+			   (when header
+			     (insert header "\n"))
+			   (goto-char (point-max))
+			   (insert "\n\n---\nPress C-c ' to ask follow-up questions.\n")
+			   (goto-char (point-min))
+			   (gnus-summarize--chat-keyable key)
+			   (when (local-variable-p 'gnus-summary-buffer)
+			     (with-current-buffer gnus-summary-buffer
+			       (gnus-summarize--chat-keyable key))))))))))
 	(gnus-article-prepare "foo" nil)))))
 
 (defun gnus-summarize-open-chat (key)
