@@ -5,7 +5,7 @@
 ;; Author: dickmao
 ;; Version: 0.0.1
 ;; URL: https://github.com/dickmao/gnus-summarize
-;; Package-Requires: ((debbugs "0.46"))
+;; Package-Requires: ((debbugs))
 
 ;; This file is not part of GNU Emacs.
 
