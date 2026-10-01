@@ -322,7 +322,7 @@
 
 (defun gnus-summarize--display-article (key header)
   "Display BUFFER using Gnus article display routines."
-  (when-let* (b (assoc-default key gnus-summarize--buffer-alist))
+  (when-let* ((b (assoc-default key gnus-summarize--buffer-alist)))
     (if (and (not (derived-mode-p 'gnus-summary-mode))
 	     (not (derived-mode-p 'gnus-article-mode)))
 	(with-current-buffer (pop-to-buffer b)
