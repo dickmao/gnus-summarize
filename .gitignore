@@ -4,4 +4,5 @@
 *.tar
 gnus-summarize-[0-9.]*
 __pycache__/
-epkg*
+/epkg/
+epkg.mk
