@@ -140,9 +140,9 @@
 (defun gnus-summarize--thread-full-text (root-id)
   (when (or (derived-mode-p 'gnus-summary-mode)
 	    (derived-mode-p 'gnus-article-mode))
-    (when-let ((thread (gnus-id-to-thread root-id))
-	       (article-nums (gnus-articles-in-thread thread))
-	       (restore (gnus-summary-article-number)))
+    (when-let* ((thread (gnus-id-to-thread root-id))
+		(article-nums (gnus-articles-in-thread thread))
+		(restore (gnus-summary-article-number)))
       (prog1 (save-excursion
 	       (save-window-excursion
 		 (let (texts)
@@ -242,26 +242,26 @@
 
 (defun gnus-summarize--bug (bug-num)
   (gnus-summarize--init)
-  (when-let ((reget-p (not (assoc-default bug-num gnus-summarize--buffer-alist)))
-	     (log (cl-letf (((symbol-function 'soap-validate-xs-basic-type)
-			     #'ignore))
-		    (debbugs-get-bug-log bug-num)))
-	     (full-text (or (assoc-default bug-num gnus-summarize--full-text-alist)
-			    (let ((ret (gnus-summarize--bug-full-text log)))
-			      (prog1 ret
-				(push (cons bug-num ret)
-				      gnus-summarize--full-text-alist))))))
+  (when-let* ((reget-p (not (assoc-default bug-num gnus-summarize--buffer-alist)))
+	      (log (cl-letf (((symbol-function 'soap-validate-xs-basic-type)
+			      #'ignore))
+		     (debbugs-get-bug-log bug-num)))
+	      (full-text (or (assoc-default bug-num gnus-summarize--full-text-alist)
+			     (let ((ret (gnus-summarize--bug-full-text log)))
+			       (prog1 ret
+				 (push (cons bug-num ret)
+				       gnus-summarize--full-text-alist))))))
     (gnus-summarize--reget-summary bug-num))
   (assoc-default bug-num gnus-summarize--buffer-alist))
 
 (defun gnus-summarize--thread (root-id)
   (gnus-summarize--init)
-  (when-let ((reget-p (not (assoc-default root-id gnus-summarize--buffer-alist)))
-	     (full-text (or (assoc-default root-id gnus-summarize--full-text-alist)
-			    (let ((ret (gnus-summarize--thread-full-text root-id)))
-			      (prog1 ret
-				(push (cons root-id ret)
-				      gnus-summarize--full-text-alist))))))
+  (when-let* ((reget-p (not (assoc-default root-id gnus-summarize--buffer-alist)))
+	      (full-text (or (assoc-default root-id gnus-summarize--full-text-alist)
+			     (let ((ret (gnus-summarize--thread-full-text root-id)))
+			       (prog1 ret
+				 (push (cons root-id ret)
+				       gnus-summarize--full-text-alist))))))
     (gnus-summarize--reget-summary root-id))
   (assoc-default root-id gnus-summarize--buffer-alist))
 
