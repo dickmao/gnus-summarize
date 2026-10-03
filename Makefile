@@ -31,12 +31,6 @@ install-py: .venv $(wildcard *.py)
 .PHONY: test
 test: compile epkg-test
 
-.PHONY: dist-clean
-dist-clean: epkg-dist-clean
-
-.PHONY: dist
-dist: ghostty-vt-module.so epkg-dist
-
 .PHONY: install
 install: epkg-install
 
