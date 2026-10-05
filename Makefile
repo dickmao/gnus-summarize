@@ -13,8 +13,7 @@ PYSRC := $(shell git ls-files *.py)
 ELSRC := $(shell git ls-files gnus-summarize*.el nn*.el)
 TESTSRC := $(shell git ls-files test*.el)
 
-EPKG_EL := $(ELSRC)
-EPKG_FILES := $(EPKG_EL) $(PYSRC) Makefile pyproject.toml chat-prompt.txt
+EPKG_FILES := $(ELSRC) $(PYSRC) Makefile pyproject.toml chat-prompt.txt
 EPKG_MAIN := gnus-summarize.el
 EPKG_TEST_EL := $(TESTSRC)
 
